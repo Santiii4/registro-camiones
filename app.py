@@ -33,6 +33,7 @@ def extraer_datos_profesional(pdf_file):
         for page in pdf.pages:
             texto += (page.extract_text() or "") + "\n"
     
+    # Valores por defecto
     d = {k: "No encontrado" for k in ["ORIGEN", "DESTINO", "ADUANA_SALIDA", "EXPORTADOR", "IMPORTADOR", "FECHA", "MIC", "CRT", "FACTURA", "VALOR", "FLETE", "TRACTOR", "SEMIREMOLQUE", "CHOFER", "DNI", "SEGURO"]}
 
     if not texto.strip():
@@ -74,24 +75,10 @@ def extraer_datos_profesional(pdf_file):
         solo_fecha = re.search(r'(\d{2}-\d{2}-\d{4})', fecha_match.group(0))
         if solo_fecha: d["FECHA"] = solo_fecha.group(1)
 
-    # --- CAMPOS MODIFICADOS (Ajuste Quirúrgico) ---
-
-    # 1. DESTINO: Toma la línea entera debajo del campo 8, separando números "2 0 3" de la derecha
     destino_match = re.search(r'8\s*Ciudad.*?destino\s*final[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
     if destino_match: 
-        # Si encuentra 2 o más espacios seguidos (que separan la ciudad de los números), lo recorta
         destino_limpio = re.split(r'\s{2,}', destino_match.group(1).strip())[0]
         d["DESTINO"] = destino_limpio
-
-    # 2. EXPORTADOR / IMPORTADOR: Limpiando la "basura" del OCR
-    exp_match = re.search(r'(?:1\s*Nombre.*?remitente|33\s*Remitente)[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
-    if exp_match: 
-        exp_texto = exp_match.group(1).strip()
-        # Corta la cadena si encuentra "038 N A" (la basura que reportaste)
-        exp_texto = re.split(r'038\s*N\s*A', exp_texto, flags=re.IGNORECASE)[0]
-        # Corta la cadena si encuentra direcciones comunes
-        exp_texto = re.split(r'(?:\s+AV\.|\s+RST|\s+RUA|\s+C\.)', exp_texto, flags=re.IGNORECASE)[0]
-        d["EXPORTADOR"] = exp_texto.strip()
 
     imp_match = re.search(r'(?:4\s*Nombre.*?destinatario|34\s*Destinatario)[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
     if imp_match: 
@@ -99,12 +86,34 @@ def extraer_datos_profesional(pdf_file):
         imp_texto = re.split(r'(?:\s+AV\.|\s+RST|\s+RUA|\s+C\.)', imp_texto, flags=re.IGNORECASE)[0]
         d["IMPORTADOR"] = imp_texto.strip()
 
-    # 3. FLETE Y SEGURO: Busca cualquier texto o espacio hasta llegar a un número decimal
-    flete_match = re.search(r'Flete\s*/\s*Frete[^\d]*(\d+\.\d{2})', texto, re.IGNORECASE)
-    if flete_match: d["FLETE"] = flete_match.group(1)
+    # --- CAMPOS CON CORRECCIÓN QUIRÚRGICA ---
+
+    # 1. EXPORTADOR: Usamos re.sub como "goma de borrar" para eliminar la basura sin afectar el nombre
+    exp_match = re.search(r'(?:1\s*Nombre.*?remitente|33\s*Remitente)[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
+    if exp_match: 
+        exp_texto = exp_match.group(1).strip()
+        # Borra específicamente la cadena de error del OCR
+        exp_texto = re.sub(r'038\s*N\s*A.*?NOVO HAMBURGO-', '', exp_texto, flags=re.IGNORECASE).strip()
+        # Corta si empieza una dirección
+        exp_texto = re.split(r'(?:\s+AV\.|\s+RST|\s+RUA|\s+C\.)', exp_texto, flags=re.IGNORECASE)[0]
+        d["EXPORTADOR"] = exp_texto.strip()
+
+    # 2. FLETE Y SEGURO: Soporte para montos que empiezan con punto (ej. ".00")
+    # Flete
+    flete_match = re.search(r'Flete\s*/\s*Frete[^\d\.]*(\d*\.\d{2})', texto, re.IGNORECASE)
+    if flete_match: 
+        val = flete_match.group(1)
+        d["FLETE"] = "0.00" if val == ".00" else val
+    else:
+        d["FLETE"] = "0.00"
     
-    seguro_match = re.search(r'Seguro\s*/\s*Seguro[^\d]*(\d+\.\d{2})', texto, re.IGNORECASE)
-    if seguro_match: d["SEGURO"] = seguro_match.group(1)
+    # Seguro
+    seguro_match = re.search(r'Seguro\s*/\s*Seguro[^\d\.]*(\d*\.\d{2})', texto, re.IGNORECASE)
+    if seguro_match: 
+        val = seguro_match.group(1)
+        d["SEGURO"] = "0.00" if val == ".00" else val
+    else:
+        d["SEGURO"] = "0.00"
 
     return [d["ORIGEN"], d["DESTINO"], d["ADUANA_SALIDA"], d["EXPORTADOR"], d["IMPORTADOR"], 
             d["FECHA"], d["MIC"], d["CRT"], d["FACTURA"], d["VALOR"], d["FLETE"], 
