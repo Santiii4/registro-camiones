@@ -1,10 +1,10 @@
 streamlit
 pdfplumber
 pandas
-google-api-python-client
-google-auth-httplib2
-google-auth-oauthlib
 google-generativeai>=0.8.0
+google-api-python-client
+google-auth
+
 
 
 
