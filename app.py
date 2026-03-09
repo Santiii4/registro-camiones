@@ -8,6 +8,9 @@ from googleapiclient.discovery import build
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 SPREADSHEET_ID = '1dOqPmQo9wdF16fP9rQu48NvaYmwMT07cBQnbZl7vEak'
 
+# No usamos IA por ahora, solo Google Sheets
+info = st.secrets["google_credentials"]
+
 def agregar_a_google_sheets(datos_lista):
     try:
         # Usamos directamente el diccionario de los secrets
