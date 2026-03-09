@@ -92,28 +92,23 @@ def extraer_datos_profesional(pdf_file):
         imp_texto = re.sub(r'[^a-zA-Z\s\.\-&]', '', imp_texto)
         d["IMPORTADOR"] = re.sub(r'\s{2,}', ' ', imp_texto).strip()
 
-    # --- EXPORTADOR (Con eliminación explícita de tu frase) ---
+    # --- EXPORTADOR (Simplificado a la primera línea) ---
+    # Busca la etiqueta, salta a la siguiente línea y captura SOLO esa línea
     exp_match = re.search(r'(?:1\s*Nombre.*?remitente|33\s*Remitente)[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
     if exp_match: 
         exp_texto = exp_match.group(1).strip()
         
-        # 1. ELIMINACIÓN DIRECTA Y EXPLÍCITA DE LA FRASE MOLESTA
-        # Reemplazo exacto por si sale tal cual:
-        exp_texto = exp_texto.replace('N A d R e c on h eci . m ie nt o . - URUGUAIANA-', '')
-        exp_texto = exp_texto.replace('N A d R e c on h eci . m ie nt o . -', '')
-        # Reemplazo flexible por si el OCR le mete más espacios:
-        exp_texto = re.sub(r'N\s*A\s*d\s*R\s*e\s*c\s*on\s*h\s*eci\s*\.\s*m\s*ie\s*nt\s*o\s*\.\s*-\s*URUGUAIANA\-?', '', exp_texto, flags=re.IGNORECASE)
+        # 1. Corta si hay un salto visual grande (separa la columna izquierda de la derecha)
+        exp_texto = re.split(r'\s{2,}', exp_texto)[0]
         
-        # 2. Limpieza estándar (cortar direcciones y basuras)
-        sociedad_match = re.search(r'^(.*?(?:S\.?\s*R\.?\s*L\.?|S\.?\s*A\.?|L\.?\s*T\.?\s*D\.?\s*A\.?|S/A|S\.?\s*A\.?\s*S\.?|INC\.?))', exp_texto, re.IGNORECASE)
-        if sociedad_match:
-            exp_texto = sociedad_match.group(1)
-        else:
-            exp_texto = re.split(r'\s{2,}', exp_texto)[0]
-            exp_texto = re.split(r'(?:\s+AV\.|\s+RST|\s+RUA|\s+C\.)', exp_texto, flags=re.IGNORECASE)[0]
-            
+        # 2. Tijeras de seguridad para fragmentos del OCR
+        exp_texto = re.split(r'N\s*A\s*d\s*R', exp_texto, flags=re.IGNORECASE)[0]
+        exp_texto = re.split(r'N[\?º°]?\s*de\s*conhec', exp_texto, flags=re.IGNORECASE)[0]
+        
+        # 3. Limpieza de números y caracteres especiales
         exp_texto = re.sub(r'\d+', '', exp_texto)
         exp_texto = re.sub(r'[^a-zA-Z\s\.\-&]', '', exp_texto)
+        
         d["EXPORTADOR"] = re.sub(r'\s{2,}', ' ', exp_texto).strip()
 
     # --- FLETE Y SEGURO (Intactos) ---
