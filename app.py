@@ -75,8 +75,6 @@ def extraer_datos_profesional(pdf_file):
         solo_fecha = re.search(r'(\d{2}-\d{2}-\d{4})', fecha_match.group(0))
         if solo_fecha: d["FECHA"] = solo_fecha.group(1)
 
-    # --- CAMPOS CON FILTRO ESTRICTO DE MAYÚSCULAS ---
-
     # DESTINO
     destino_match = re.search(r'8\s*Ciudad.*?destino\s*final[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
     if destino_match: 
@@ -93,15 +91,25 @@ def extraer_datos_profesional(pdf_file):
         imp_texto = re.sub(r'[^A-ZÑ\s\.\-&]', '', imp_texto)
         d["IMPORTADOR"] = re.sub(r'\s{2,}', ' ', imp_texto).strip()
 
-    # --- EXPORTADOR (Extraído estrictamente del Campo 1 del CRT) ---
+    # --- EXPORTADOR (Blindado contra el Campo 2) ---
     exp_match = re.search(r'1\s*Nombre.*?remitente[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
     if exp_match: 
         exp_texto = exp_match.group(1).strip()
+        
+        # 1. Corta si hay espacios grandes
         exp_texto = re.split(r'\s{2,}', exp_texto)[0]
+        
+        # 2. BLOQUEO DEL CAMPO 2: Corta si encuentra el "2" o el CRT "038"
+        exp_texto = re.split(r'\s+2\b', exp_texto)[0] # Si el "2" está separado por un espacio
+        exp_texto = re.split(r'\b2\s+[A-Z]', exp_texto, flags=re.IGNORECASE)[0] # Ej: "2 Numero"
+        exp_texto = re.split(r'038', exp_texto)[0] # Si empieza a leer el número de CRT
+        exp_texto = re.split(r'26AR', exp_texto)[0] # Por si acaso se cruza un MIC
+        
+        # 3. Tijeras de seguridad antiguas
         exp_texto = re.split(r'N\s*A\s*d\s*R', exp_texto, flags=re.IGNORECASE)[0]
         exp_texto = re.split(r'N[\?º°]?\s*de\s*conhec', exp_texto, flags=re.IGNORECASE)[0]
         
-        # Filtro estricto: Deja solo letras MAYÚSCULAS, la Ñ, puntos, guiones y espacios
+        # 4. Filtro estricto: Solo MAYÚSCULAS
         exp_texto = re.sub(r'[^A-ZÑ\s\.\-&]', '', exp_texto)
         d["EXPORTADOR"] = re.sub(r'\s{2,}', ' ', exp_texto).strip()
 
