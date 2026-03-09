@@ -33,40 +33,47 @@ def extraer_datos_optimizados(pdf_file):
         for page in pdf.pages:
             texto += page.extract_text() + "\n"
         
+        # Función de búsqueda "inteligente" (no importa si hay mayúsculas o minúsculas)
         def buscar(patron, texto_fuente, default=""):
             match = re.search(patron, texto_fuente, re.S | re.I)
             return match.group(1).strip() if match else default
 
-        # --- LÓGICA DE ORIGEN DINÁMICO ---
-        aduana_detectada = buscar(r"7 Aduana.*?partida\s*\n(.*?)\n", texto, "MENDOZA-ARGENTINA")
-        origen_pais = "OTRO"
-        if "ARGENTINA" in aduana_detectada.upper(): origen_pais = "ARGENTINA"
-        elif "BRASIL" in aduana_detectada.upper() or "BRAZIL" in aduana_detectada.upper(): origen_pais = "BRASIL"
-        elif "PARAGUAY" in aduana_detectada.upper(): origen_pais = "PARAGUAY"
+        # --- LÓGICA DE ORIGEN ---
+        aduana = buscar(r"7 Aduana.*?partida\s*\n(.*?)\n", texto, "MENDOZA-ARGENTINA")
+        origen_pais = "ARGENTINA" if "ARG" in aduana.upper() else ("BRASIL" if "BRA" in aduana.upper() else "PARAGUAY")
 
         # --- LIMPIEZA DE CRT (Sacar el 038 inicial) ---
-        crt_completo = buscar(r"23 N.*?porte\s*(\d+)", texto, "038AR537202868")
-        crt_limpio = crt_completo[3:] if crt_completo.startswith("038") else crt_completo
+        crt_raw = buscar(r"23 N.*?porte\s*(\d+)", texto)
+        crt_limpio = crt_raw[3:] if crt_raw.startswith("038") else crt_raw
 
-        # Mapeo según tus nuevas instrucciones
+        # --- EXTRACCIÓN MEJORADA ---
         datos = [
-            origen_pais,                                  # ORIGEN
-            aduana_detectada,                             # ADUANA
-            buscar(r"8 Ciudad.*?destino final\s*\n(.*?)\n", texto, "NOVO HAMBURGO-BRASIL"), # DESTINO
-            "MENDOZA",                                    # ADUANA DE SALIDA
-            buscar(r"33 Remitente\s*\n(.*?)\n", texto, "BODEGAS CHANDON S.A."), # EXPORTADOR (Remitente)
-            buscar(r"34 Destinatario\s*\n(.*?)\n", texto, "MOET HENNESSY DO BRASIL"), # IMPORTADOR (Destinatario)
-            buscar(r"F\. Ofic:\s*([\d-]+)", texto, "19-02-2026"), # fecha
-            buscar(r"(26AR\w+)", texto, "26AR088420J"),   # MIC ELEC.
-            crt_limpio,                                   # CRT (Sin el 038)
-            buscar(r"11.*?exportacion nro\.\s*([\w-]+)", texto, "E-0044-00008436"), # FACTURA (Campo 11)
-            buscar(r"27 Valor FOT\s*([\d.]+)", texto, "41337.00"), # VALOR
-            buscar(r"28 Fiete en USS\s*([\d.]+)", texto, "3100.00"), # FLETE
-            buscar(r"11 Placa de Camion\s*(\w+)", texto, "JAS8G25"), # TRACTOR (Placa Camion)
-            buscar(r"Semiremolque\s*Placa:\s*(\w+)", texto, "JAR7B86"), # CARRETA (Semiremolque)
-            buscar(r"CONDUCTOR 1:\s*([A-Z\s]+)", texto, "FABIANO DE SOUZA MIRANDA"), # CHOFER
-            buscar(r"Campo 40.*?CI\s*([\d.-]+)", texto, "029.693.890-45"), # DNI (Campo 40 luego de CI)
-            buscar(r"29 Seguro en USS\s*([\d.]+)", texto, "23.00") # SEGURO
+            origen_pais,                                  
+            aduana,                                       
+            buscar(r"8 Ciudad.*?destino final\s*\n(.*?)\n", texto, "NOVO HAMBURGO-BRASIL"), 
+            "MENDOZA",                                    
+            buscar(r"33 Remitente\s*\n(.*?)\n", texto),    # EXPORTADOR
+            buscar(r"34 Destinatario\s*\n(.*?)\n", texto), # IMPORTADOR
+            buscar(r"F\. Ofic:\s*([\d-]+)", texto),       
+            buscar(r"(26AR\w+)", texto),                  # MIC ELEC.
+            crt_limpio,                                   # CRT
+            
+            # FACTURA: Busca después de "exportacion nro" o "FACTURA"
+            buscar(r"(?:exportacion nro\.|FACTURA NRO:)\s*([\w-]+)", texto),
+            
+            buscar(r"27 Valor FOT\s*([\d.]+)", texto),   
+            buscar(r"28 Fiete en USS\s*([\d.]+)", texto),
+            
+            # VEHÍCULOS: Tractor y Carreta
+            buscar(r"11 Placa de Camion\s*(\w+)", texto),
+            buscar(r"(?:Semiremolque|Reboque).*?Placa:\s*(\w+)", texto),
+            
+            buscar(r"CONDUCTOR 1:\s*([A-Z\s]+)", texto), 
+            
+            # DNI: Busca específicamente en el campo 40 tras "CI" o "DNI"
+            buscar(r"40.*?CI\s*([\d.-]+)", texto),       
+            
+            buscar(r"29 Seguro en USS\s*([\d.]+)", texto)
         ]
         return datos
 
