@@ -24,7 +24,7 @@ def agregar_a_google_sheets(datos_lista):
         ).execute()
         return True
     except Exception as e:
-        st.error(f"Error al guardar en la planilla: {e}")
+        st.error(f"Error al guardar: {e}")
         return False
 
 def extraer_datos_profesional(pdf_file):
@@ -33,71 +33,70 @@ def extraer_datos_profesional(pdf_file):
         for page in pdf.pages:
             texto += (page.extract_text() or "") + "\n"
     
-    # Diccionario con los 17 campos requeridos
-    d = {k: "0.00" for k in ["ORIGEN", "ADUANA", "DESTINO", "ADUANA_SALIDA", "EXPORTADOR", "IMPORTADOR", "FECHA", "MIC", "CRT", "FACTURA", "VALOR", "FLETE", "TRACTOR", "CARRETA", "CHOFER", "DNI", "SEGURO"]}
+    d = {k: "0.00" for k in ["ORIGEN", "DESTINO", "ADUANA_SALIDA", "EXPORTADOR", "IMPORTADOR", "FECHA", "MIC", "CRT", "FACTURA", "VALOR", "FLETE", "TRACTOR", "CARRETA", "CHOFER", "DNI", "SEGURO"]}
 
     if not texto.strip():
         return list(d.values())
 
-    # 1. EXPORTADOR E IMPORTADOR (Solo la primera línea/nombre)
-    exp_match = re.search(r'(?:33\s*Remitente|1\s*Nombre\s*y\s*domicilio\s*del\s*remitente)[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
+    # --- LÓGICA DE EXTRACCIÓN UNIVERSAL ---
+
+    # 1. EXPORTADOR DINÁMICO (Toma el nombre de cualquier empresa remitente)
+    # Busca la etiqueta 'Remitente' (campo 33 o 1) y captura la línea de texto inmediata
+    exp_match = re.search(r'(?:33\s*Remitente|1\s*Nombre\s*y\s*domicilio\s*del\s*remitente)[^\n]*\n\s*([A-Z0-9\s.]{3,})', texto, re.IGNORECASE)
     if exp_match: d["EXPORTADOR"] = exp_match.group(1).strip()
 
-    imp_match = re.search(r'(?:34\s*Destinatario|4\s*Nombre\s*y\s*domicilio\s*del\s*destinatario)[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
+    # 2. IMPORTADOR DINÁMICO (Campo 34 o 4)
+    imp_match = re.search(r'(?:34\s*Destinatario|4\s*Nombre\s*y\s*domicilio\s*del\s*destinatario)[^\n]*\n\s*([A-Z0-9\s.]{3,})', texto, re.IGNORECASE)
     if imp_match: d["IMPORTADOR"] = imp_match.group(1).strip()
 
-    # 2. FECHA (Campo 7: Lugar, país y fecha)
-    fecha_match = re.search(r'7\s*Lugar,?\s*pais\s*y\s*fecha.*?\n.*?([\d]{2}-[\d]{2}-[\d]{4})', texto, re.DOTALL | re.IGNORECASE)
-    if fecha_match: 
-        d["FECHA"] = fecha_match.group(1)
-    else:
-        fecha_alt = re.search(r'(\d{2}-\d{2}-\d{4})', texto)
-        if fecha_alt: d["FECHA"] = fecha_alt.group(1)
+    # 3. DESTINO (Busca el patrón CIUDAD-PAIS saltando códigos aduaneros)
+    # Busca 'destino final' y captura el texto en mayúsculas con guion (ej: ITAJAI-BRASIL)
+    destino_match = re.search(r'8\s*Ciudad\s*y\s*pais\s*de\s*destino\s*final.*?([A-Z]{3,}\s*-\s*[A-Z]{3,})', texto, re.DOTALL | re.IGNORECASE)
+    if destino_match:
+        d["DESTINO"] = destino_match.group(1).strip()
 
-    # 3. FLETE Y SEGURO (Montos en USD)
-    flete_monto = re.search(r'Flete[^\n]*?([\d]{3,}\.[\d]{2})', texto, re.IGNORECASE)
-    if flete_monto: d["FLETE"] = flete_monto.group(1)
-
-    seguro_monto = re.search(r'Seguro[^\n]*?([\d]+\.[\d]{2})', texto, re.IGNORECASE)
-    if seguro_monto: d["SEGURO"] = seguro_monto.group(1)
-
-    # 4. VALOR (Campo 14 o 27)
-    valor_match = re.search(r'(?:14|27)\s*Valor[^\n]*\n\s*([\d.]+)', texto, re.IGNORECASE)
-    if valor_match: d["VALOR"] = valor_match.group(1)
-
-    # 5. PATENTES (Tractor y Carreta/Semiremolque)
+    # 4. PATENTES (Tractor y Carreta/Semiremolque)
+    # Busca patrones Mercosur (3 letras, 1 nro, 1 letra, 2 nros)
     patentes = re.findall(r'[A-Z]{3}\d[A-Z]\d{2}', texto)
     if len(patentes) >= 2:
         d["TRACTOR"] = patentes[0]
-        d["CARRETA"] = patentes[1]
+        d["CARRETA"] = patentes[1] # MKY4A91 detectado como segunda patente
     elif len(patentes) == 1:
         d["TRACTOR"] = patentes[0]
 
-    # 6. ADUANA DESTINO (Campo 8)
-    destino_match = re.search(r'8\s*Ciudad\s*y\s*pais\s*de\s*destino\s*final[^\n]*\n\s*([A-Z\s-]+)', texto, re.IGNORECASE)
-    if destino_match: d["DESTINO"] = destino_match.group(1).split('\n')[0].strip()
+    # 5. FLETE (Extrae el monto destinatario de la tabla de gastos)
+    flete_search = re.search(r'Flete.*?([\d]{3,}\.[\d]{2})', texto, re.DOTALL | re.IGNORECASE)
+    if flete_search: d["FLETE"] = flete_search.group(1)
 
-    # 7. MIC Y CRT (Limpieza del 038 inicial)
+    # 6. SEGURO (Valor numérico debajo del flete)
+    seguro_search = re.search(r'Seguro.*?([\d]+\.[\d]{2})', texto, re.DOTALL | re.IGNORECASE)
+    if seguro_search: d["SEGURO"] = seguro_search.group(1)
+
+    # 7. FECHA (DD-MM-AAAA)
+    fecha_match = re.search(r'(\d{2}-\d{2}-\d{4})', texto)
+    if fecha_match: d["FECHA"] = fecha_match.group(1)
+
+    # 8. MIC Y CRT (Limpieza del prefijo 038)
     mic = re.search(r'26AR[A-Z0-9]+', texto)
     if mic: d["MIC"] = mic.group()
     crt = re.search(r'038AR[\d\.]+', texto)
     if crt: d["CRT"] = crt.group().replace("038", "", 1)
 
-    # 8. CHOFER Y DNI
+    # 9. VALOR, CHOFER, DNI Y FACTURA
+    valor_match = re.search(r'(?:14|27)\s*Valor.*?\n\s*([\d.]+)', texto, re.DOTALL | re.IGNORECASE)
+    if valor_match: d["VALOR"] = valor_match.group(1)
     chofer = re.search(r'CONDUCTOR\s*1?:\s*([^:]+)\s*DOC:', texto, re.IGNORECASE)
     if chofer: d["CHOFER"] = chofer.group(1).strip()
     dni = re.search(r'DOC:\s*([A-Z0-9\s.]+)', texto)
     if dni: d["DNI"] = dni.group(1).strip()
-
-    # 9. FACTURA (Campo 11)
     fac = re.search(r'EXPORTACION\s*NRO\s*([\w-]+)', texto, re.IGNORECASE)
     if fac: d["FACTURA"] = fac.group(1)
 
+    # 10. CAMPOS FIJOS
     d["ADUANA_SALIDA"] = "MENDOZA"
-    d["ADUANA"] = "MENDOZA-ARGENTINA"
     d["ORIGEN"] = "ARGENTINA" if "ARGENTINA" in texto.upper() else "BRASIL"
 
-    return [d["ORIGEN"], d["ADUANA"], d["DESTINO"], d["ADUANA_SALIDA"], d["EXPORTADOR"], 
+    return [d["ORIGEN"], d["DESTINO"], d["ADUANA_SALIDA"], d["EXPORTADOR"], 
             d["IMPORTADOR"], d["FECHA"], d["MIC"], d["CRT"], d["FACTURA"], 
             d["VALOR"], d["FLETE"], d["TRACTOR"], d["CARRETA"], d["CHOFER"], d["DNI"], d["SEGURO"]]
 
@@ -108,13 +107,19 @@ st.title("🚚 Registro de Camiones - Sánchez Transportes")
 archivo = st.file_uploader("Subir MIC/CRT (PDF)", type="pdf")
 
 if archivo:
-    with st.spinner('Extrayendo información...'):
+    with st.spinner('Analizando documento...'):
         fila = extraer_datos_profesional(archivo)
-        columnas = ["ORIGEN", "ADUANA", "DESTINO", "ADUANA SALIDA", "EXPORTADOR", "IMPORTADOR", "FECHA", "MIC", "CRT", "FACTURA", "VALOR", "FLETE", "TRACTOR", "CARRETA", "CHOFER", "DNI", "SEGURO"]
+        columnas = ["ORIGEN", "DESTINO", "ADUANA SALIDA", "EXPORTADOR", "IMPORTADOR", "FECHA", "MIC", "CRT", "FACTURA", "VALOR", "FLETE", "TRACTOR", "CARRETA", "CHOFER", "DNI", "SEGURO"]
         
         st.write("### Datos detectados:")
+        st.table(pd.DataFrame([fila], columns=columnas))
+        
+        if st.button("Confirmar y Guardar en Google Sheets"):
+            if agregar_a_google_sheets(fila):
+                st.success("✅ ¡Registro exitoso!")
         st.table(pd.DataFrame([fila], columns=columnas))
         
         if st.button("Guardar en Google Sheets"):
             if agregar_a_google_sheets(fila):
                 st.success("✅ ¡Registro guardado exitosamente!")
+
