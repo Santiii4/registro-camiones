@@ -38,7 +38,7 @@ def extraer_datos_profesional(pdf_file):
     if not texto.strip():
         return list(d.values())
 
-    # --- CAMPOS INTACTOS (No tocar) ---
+    # --- CAMPOS INTACTOS (No modificados) ---
     d["ORIGEN"] = "ARGENTINA" if "ARGENTINA" in texto.upper() else "BRASIL"
     d["ADUANA_SALIDA"] = "MENDOZA"
     
@@ -69,40 +69,41 @@ def extraer_datos_profesional(pdf_file):
     elif len(patentes) >= 2:
         d["SEMIREMOLQUE"] = patentes[1]
 
-    # --- CAMPOS MODIFICADOS ---
-
-    # 1. DESTINO: Extrae la ubicación principal en el campo 8
-    destino_match = re.search(r'8\s*Ciudad.*?destino\s*final.*?\n\s*([A-Z\s]+-[A-Z\s]+)', texto, re.IGNORECASE)
-    if destino_match: d["DESTINO"] = destino_match.group(1).strip()
-
-    # 2. EXPORTADOR / IMPORTADOR: Captura el nombre antes de direcciones o CUIT
-    exp_match = re.search(r'(?:1\s*Nombre.*?remitente|33\s*Remitente)[^\n]*\n\s*([A-Z\s.,]+?)(?:\s*AV\.|\s*RST|\s*RUA|\s*C\.)', texto, re.IGNORECASE)
-    if exp_match: 
-        d["EXPORTADOR"] = exp_match.group(1).strip()
-    else:
-        # Respaldo si no hay prefijo de dirección claro
-        exp_match_alt = re.search(r'(?:1\s*Nombre.*?remitente|33\s*Remitente)[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
-        if exp_match_alt: d["EXPORTADOR"] = exp_match_alt.group(1).strip()
-
-    imp_match = re.search(r'(?:4\s*Nombre.*?destinatario|34\s*Destinatario)[^\n]*\n\s*([A-Z\s.,]+?)(?:\s*AV\.|\s*RST|\s*RUA|\s*C\.)', texto, re.IGNORECASE)
-    if imp_match: 
-        d["IMPORTADOR"] = imp_match.group(1).strip()
-    else:
-        imp_match_alt = re.search(r'(?:4\s*Nombre.*?destinatario|34\s*Destinatario)[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
-        if imp_match_alt: d["IMPORTADOR"] = imp_match_alt.group(1).strip()
-
-    # 3. FECHA: Localiza la fecha en el campo 7
     fecha_match = re.search(r'7\s*Lugar.*?fecha.*?\d{2}-\d{2}-\d{4}', texto, re.DOTALL | re.IGNORECASE)
     if fecha_match:
-        # Extraer solo la fecha de la coincidencia
         solo_fecha = re.search(r'(\d{2}-\d{2}-\d{4})', fecha_match.group(0))
         if solo_fecha: d["FECHA"] = solo_fecha.group(1)
 
-    # 4. FLETE Y SEGURO: Busca montos en la sección de gastos
-    flete_match = re.search(r'Flete[^\n\d]*?(\d{1,}\.\d{2})', texto, re.IGNORECASE)
+    # --- CAMPOS MODIFICADOS (Ajuste Quirúrgico) ---
+
+    # 1. DESTINO: Toma la línea entera debajo del campo 8, separando números "2 0 3" de la derecha
+    destino_match = re.search(r'8\s*Ciudad.*?destino\s*final[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
+    if destino_match: 
+        # Si encuentra 2 o más espacios seguidos (que separan la ciudad de los números), lo recorta
+        destino_limpio = re.split(r'\s{2,}', destino_match.group(1).strip())[0]
+        d["DESTINO"] = destino_limpio
+
+    # 2. EXPORTADOR / IMPORTADOR: Limpiando la "basura" del OCR
+    exp_match = re.search(r'(?:1\s*Nombre.*?remitente|33\s*Remitente)[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
+    if exp_match: 
+        exp_texto = exp_match.group(1).strip()
+        # Corta la cadena si encuentra "038 N A" (la basura que reportaste)
+        exp_texto = re.split(r'038\s*N\s*A', exp_texto, flags=re.IGNORECASE)[0]
+        # Corta la cadena si encuentra direcciones comunes
+        exp_texto = re.split(r'(?:\s+AV\.|\s+RST|\s+RUA|\s+C\.)', exp_texto, flags=re.IGNORECASE)[0]
+        d["EXPORTADOR"] = exp_texto.strip()
+
+    imp_match = re.search(r'(?:4\s*Nombre.*?destinatario|34\s*Destinatario)[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
+    if imp_match: 
+        imp_texto = imp_match.group(1).strip()
+        imp_texto = re.split(r'(?:\s+AV\.|\s+RST|\s+RUA|\s+C\.)', imp_texto, flags=re.IGNORECASE)[0]
+        d["IMPORTADOR"] = imp_texto.strip()
+
+    # 3. FLETE Y SEGURO: Busca cualquier texto o espacio hasta llegar a un número decimal
+    flete_match = re.search(r'Flete\s*/\s*Frete[^\d]*(\d+\.\d{2})', texto, re.IGNORECASE)
     if flete_match: d["FLETE"] = flete_match.group(1)
     
-    seguro_match = re.search(r'Seguro[^\n\d]*?(\d{1,}\.\d{2})', texto, re.IGNORECASE)
+    seguro_match = re.search(r'Seguro\s*/\s*Seguro[^\d]*(\d+\.\d{2})', texto, re.IGNORECASE)
     if seguro_match: d["SEGURO"] = seguro_match.group(1)
 
     return [d["ORIGEN"], d["DESTINO"], d["ADUANA_SALIDA"], d["EXPORTADOR"], d["IMPORTADOR"], 
