@@ -33,63 +33,70 @@ def extraer_datos_profesional(pdf_file):
         for page in pdf.pages:
             texto += (page.extract_text() or "") + "\n"
     
+    # Diccionario con los 17 campos requeridos
     d = {k: "0.00" for k in ["ORIGEN", "ADUANA", "DESTINO", "ADUANA_SALIDA", "EXPORTADOR", "IMPORTADOR", "FECHA", "MIC", "CRT", "FACTURA", "VALOR", "FLETE", "TRACTOR", "CARRETA", "CHOFER", "DNI", "SEGURO"]}
 
     if not texto.strip():
         return list(d.values())
 
-    # 1. EXPORTADOR E IMPORTADOR (Solo la primera línea del nombre)
+    # 1. EXPORTADOR (Solo el nombre: SIMPLOT ARGENTINA S R L)
     exp_match = re.search(r'(?:33\s*Remitente|1\s*Nombre\s*y\s*domicilio\s*del\s*remitente)[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
     if exp_match: d["EXPORTADOR"] = exp_match.group(1).strip()
 
+    # 2. IMPORTADOR (Solo el nombre: RFG COM TRANSP E SERVICOS LTDA)
     imp_match = re.search(r'(?:34\s*Destinatario|4\s*Nombre\s*y\s*domicilio\s*del\s*destinatario)[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
     if imp_match: d["IMPORTADOR"] = imp_match.group(1).strip()
 
-    # 2. FECHA (Campo 7: Lugar, país y fecha)
-    fecha_match = re.search(r'7\s*Lugar,?\s*pais\s*y\s*fecha.*?\n.*?([\d]{2}-[\d]{2}-[\d]{4})', texto, re.DOTALL | re.IGNORECASE)
-    if fecha_match: d["FECHA"] = fecha_match.group(1)
-
-    # 3. FLETE Y SEGURO (Búsqueda en tabla de gastos)
-    flete_monto = re.search(r'Flete[^\n]*?([\d]{3,}\.[\d]{2})', texto, re.IGNORECASE)
-    if flete_monto: d["FLETE"] = flete_monto.group(1)
-
-    # Seguro: busca un valor decimal (como .00 o 23.00) que esté cerca de la palabra Seguro
-    seguro_monto = re.search(r'Seguro[^\n]*?([\d]*\.[\d]{2})', texto, re.IGNORECASE)
-    if seguro_monto: d["SEGURO"] = seguro_monto.group(1)
-
-    # 4. VALOR (Campo 14 o 27)
-    valor_match = re.search(r'(?:14|27)\s*Valor[^\n]*\n\s*([\d.]+)', texto, re.IGNORECASE)
-    if valor_match: d["VALOR"] = valor_match.group(1)
-
-    # 5. PATENTES (Tractor y Carreta/Semiremolque)
-    patentes = re.findall(r'[A-Z]{3}\d[A-Z]\d{2}', texto)
-    if len(patentes) >= 2:
-        d["TRACTOR"] = patentes[0]
-        d["CARRETA"] = patentes[1]
-    elif len(patentes) == 1:
-        d["TRACTOR"] = patentes[0]
-
-    # 6. DESTINO (Campo 8: Ciudad y país de destino final)
+    # 3. DESTINO (Ciudad y pais de destino final - Campo 8)
     destino_match = re.search(r'8\s*Ciudad\s*y\s*pais\s*de\s*destino\s*final[^\n]*\n\s*([A-Z\s-]+)', texto, re.IGNORECASE)
     if destino_match: d["DESTINO"] = destino_match.group(1).split('\n')[0].strip()
 
-    # 7. MIC Y CRT (Limpieza del 038)
+    # 4. FECHA (DD-MM-AAAA del Campo 7)
+    fecha_match = re.search(r'7\s*Lugar,?\s*pais\s*y\s*fecha.*?\n.*?([\d]{2}-[\d]{2}-[\d]{4})', texto, re.DOTALL | re.IGNORECASE)
+    if fecha_match: 
+        d["FECHA"] = fecha_match.group(1)
+    else:
+        fecha_alt = re.search(r'(\d{2}-\d{2}-\d{4})', texto)
+        if fecha_alt: d["FECHA"] = fecha_alt.group(1)
+
+    # 5. FLETE Y SEGURO (Búsqueda en tabla de Gastos a pagar)
+    flete_monto = re.search(r'Flete[^\n]*?([\d]{3,}\.[\d]{2})', texto, re.IGNORECASE)
+    if flete_monto: d["FLETE"] = flete_monto.group(1)
+
+    seguro_monto = re.search(r'Seguro[^\n]*?([\d]+\.[\d]{2})', texto, re.IGNORECASE)
+    if seguro_monto: d["SEGURO"] = seguro_monto.group(1)
+
+    # 6. VALOR (Monto de la mercadería - Campo 14 o 27)
+    valor_match = re.search(r'(?:14|27)\s*Valor[^\n]*\n\s*([\d.]+)', texto, re.IGNORECASE)
+    if valor_match: d["VALOR"] = valor_match.group(1)
+
+    # 7. TRACTOR Y CARRETA (Semiremolque - Patentes Mercosur)
+    patentes = re.findall(r'[A-Z]{3}\d[A-Z]\d{2}', texto)
+    if len(patentes) >= 2:
+        d["TRACTOR"] = patentes[0]
+        d["CARRETA"] = patentes[1] # Patente del Semiremolque
+    elif len(patentes) == 1:
+        d["TRACTOR"] = patentes[0]
+
+    # 8. MIC Y CRT (Limpieza de identificadores)
     mic = re.search(r'26AR[A-Z0-9]+', texto)
     if mic: d["MIC"] = mic.group()
+
     crt = re.search(r'038AR[\d\.]+', texto)
     if crt: d["CRT"] = crt.group().replace("038", "", 1)
 
-    # 8. CHOFER Y DNI
+    # 9. CHOFER Y DNI (William Charao Martins)
     chofer = re.search(r'CONDUCTOR\s*1?:\s*([^:]+)\s*DOC:', texto, re.IGNORECASE)
     if chofer: d["CHOFER"] = chofer.group(1).strip()
+
     dni = re.search(r'DOC:\s*([A-Z0-9\s.]+)', texto)
     if dni: d["DNI"] = dni.group(1).strip()
 
-    # 9. FACTURA (Campo 11)
+    # 10. FACTURA (Extraída del Campo 11)
     fac = re.search(r'EXPORTACION\s*NRO\s*([\w-]+)', texto, re.IGNORECASE)
     if fac: d["FACTURA"] = fac.group(1)
 
-    # Campos fijos
+    # 11. CAMPOS FIJOS
     d["ADUANA_SALIDA"] = "MENDOZA"
     d["ADUANA"] = "MENDOZA-ARGENTINA"
     d["ORIGEN"] = "ARGENTINA" if "ARGENTINA" in texto.upper() else "BRASIL"
@@ -98,14 +105,14 @@ def extraer_datos_profesional(pdf_file):
             d["IMPORTADOR"], d["FECHA"], d["MIC"], d["CRT"], d["FACTURA"], 
             d["VALOR"], d["FLETE"], d["TRACTOR"], d["CARRETA"], d["CHOFER"], d["DNI"], d["SEGURO"]]
 
-# --- INTERFAZ ---
+# --- INTERFAZ STREAMLIT ---
 st.set_page_config(page_title="Sanchez Transportes", layout="wide")
 st.title("🚚 Registro de Camiones - Sánchez Transportes")
 
 archivo = st.file_uploader("Subir MIC/CRT (PDF)", type="pdf")
 
 if archivo:
-    with st.spinner('Extrayendo información...'):
+    with st.spinner('Extrayendo datos...'):
         fila = extraer_datos_profesional(archivo)
         columnas = ["ORIGEN", "ADUANA", "DESTINO", "ADUANA SALIDA", "EXPORTADOR", "IMPORTADOR", "FECHA", "MIC", "CRT", "FACTURA", "VALOR", "FLETE", "TRACTOR", "CARRETA", "CHOFER", "DNI", "SEGURO"]
         
