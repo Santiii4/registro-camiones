@@ -82,8 +82,6 @@ def extraer_datos_profesional(pdf_file):
         destino_limpio = re.sub(r'[^a-zA-Z\s\-]', '', destino_limpio)
         d["DESTINO"] = re.sub(r'\s{2,}', ' ', destino_limpio).strip()
 
-    # --- CAMPOS CON CORRECCIÓN ---
-
     # IMPORTADOR
     imp_match = re.search(r'(?:4\s*Nombre.*?destinatario|34\s*Destinatario)[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
     if imp_match: 
@@ -94,13 +92,17 @@ def extraer_datos_profesional(pdf_file):
         imp_texto = re.sub(r'[^a-zA-Z\s\.\-]', '', imp_texto)
         d["IMPORTADOR"] = re.sub(r'\s{2,}', ' ', imp_texto).strip()
 
-    # EXPORTADOR
+    # --- CAMPO EXPORTADOR MODIFICADO ---
     exp_match = re.search(r'(?:1\s*Nombre.*?remitente|33\s*Remitente)[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
     if exp_match: 
         exp_texto = exp_match.group(1).strip()
         exp_texto = re.split(r'\s{2,}', exp_texto)[0]
-        # NUEVO: Corta exactamente donde empieza el título del Nro de conocimiento
+        
+        # Tijeras para el "Nro de conocimiento" normal
         exp_texto = re.split(r'N[\?º°]?\s*de\s*conhec', exp_texto, flags=re.IGNORECASE)[0]
+        
+        # NUEVA TIJERA: Atrapa específicamente la frase rota del OCR "N A d R e c..."
+        exp_texto = re.split(r'N\s*A\s*d\s*R\s*e\s*c', exp_texto, flags=re.IGNORECASE)[0]
         
         exp_texto = re.sub(r'038\s*N\s*A.*?NOVO HAMBURGO-', '', exp_texto, flags=re.IGNORECASE).strip()
         exp_texto = re.split(r'(?:\s+AV\.|\s+RST|\s+RUA|\s+C\.)', exp_texto, flags=re.IGNORECASE)[0]
