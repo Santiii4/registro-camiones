@@ -92,17 +92,18 @@ def extraer_datos_profesional(pdf_file):
         imp_texto = re.sub(r'[^a-zA-Z\s\.\-]', '', imp_texto)
         d["IMPORTADOR"] = re.sub(r'\s{2,}', ' ', imp_texto).strip()
 
-    # --- CAMPO EXPORTADOR MODIFICADO ---
+    # --- EXPORTADOR MODIFICADO ---
     exp_match = re.search(r'(?:1\s*Nombre.*?remitente|33\s*Remitente)[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
     if exp_match: 
         exp_texto = exp_match.group(1).strip()
+        
+        # 1. Eliminación exacta de la frase reportada
+        exp_texto = exp_texto.replace('N A d R e c on h eci . m ie nt o . -', '')
+        
+        # 2. Cortes por si hay variaciones de espaciado
         exp_texto = re.split(r'\s{2,}', exp_texto)[0]
-        
-        # Tijeras para el "Nro de conocimiento" normal
         exp_texto = re.split(r'N[\?º°]?\s*de\s*conhec', exp_texto, flags=re.IGNORECASE)[0]
-        
-        # NUEVA TIJERA: Atrapa específicamente la frase rota del OCR "N A d R e c..."
-        exp_texto = re.split(r'N\s*A\s*d\s*R\s*e\s*c', exp_texto, flags=re.IGNORECASE)[0]
+        exp_texto = re.split(r'N\s*A\s*d\s*R', exp_texto, flags=re.IGNORECASE)[0] # Guillotina más fuerte
         
         exp_texto = re.sub(r'038\s*N\s*A.*?NOVO HAMBURGO-', '', exp_texto, flags=re.IGNORECASE).strip()
         exp_texto = re.split(r'(?:\s+AV\.|\s+RST|\s+RUA|\s+C\.)', exp_texto, flags=re.IGNORECASE)[0]
