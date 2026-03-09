@@ -7,20 +7,15 @@ from googleapiclient.discovery import build
 
 # CONFIGURACIÓN
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
-# ID de tu planilla de Google Sheets
 SPREADSHEET_ID = '1dOqPmQo9wdF16fP9rQu48NvaYmwMT07cBQnbZl7vEak'
 
 def agregar_a_google_sheets(datos_lista):
     try:
-        # Uso de st.secrets para máxima seguridad en la nube (Streamlit Cloud)
         info = st.secrets["google_credentials"]
         creds = service_account.Credentials.from_service_account_info(info, scopes=SCOPES)
-        
         service = build('sheets', 'v4', credentials=creds)
         sheet = service.spreadsheets()
         body = {'values': [datos_lista]}
-        
-        # Registro en la "Hoja 1" de tu planilla
         sheet.values().append(
             spreadsheetId=SPREADSHEET_ID,
             range="Hoja 1!A1",
@@ -42,10 +37,24 @@ def extraer_datos(pdf_file):
             match = re.search(patron, texto_fuente, re.S | re.I)
             return match.group(1).strip() if match else default
 
-        # Mapeo exhaustivo para las 17 columnas de Sanchez Transportes
+        # --- LÓGICA DE ORIGEN DINÁMICO ---
+        # Extraemos primero la aduana para determinar el país
+        aduana_detectada = buscar(r"7 Aduana.*?partida\s*\n(.*?)\n", texto, "MENDOZA-ARGENTINA")
+        
+        origen_pais = "OTRO"
+        if "ARGENTINA" in aduana_detectada.upper():
+            origen_pais = "ARGENTINA"
+        elif "BRASIL" in aduana_detectada.upper() or "BRAZIL" in aduana_detectada.upper():
+            origen_pais = "BRASIL"
+        elif "PARAGUAY" in aduana_detectada.upper():
+            origen_pais = "PARAGUAY"
+        elif "URUGUAY" in aduana_detectada.upper():
+            origen_pais = "URUGUAY"
+
+        # Mapeo para tus 17 columnas
         datos = [
-            buscar(r"Origem das mercadorias\s+(.*)", texto, "ARGENTINA"), # ORIGEN
-            buscar(r"7 Aduana.*?partida\s*\n(.*?)\n", texto, "MENDOZA-ARGENTINA"), # ADUANA
+            origen_pais, # ORIGEN (Dinámico por Aduana)
+            aduana_detectada, # ADUANA
             buscar(r"8 Ciudad.*?destino final\s*\n(.*?)\n", texto, "NOVO HAMBURGO-BRASIL"), # DESTINO
             "MENDOZA", # ADUANA DE SALIDA
             buscar(r"33 Remitente\s*\n(.*?)\n", texto, "BODEGAS CHANDON S.A."), # EXPORTADOR
@@ -64,7 +73,7 @@ def extraer_datos(pdf_file):
         ]
         return datos
 
-# CONFIGURACIÓN DE LA PÁGINA WEB
+# INTERFAZ
 st.set_page_config(page_title="Sanchez Transportes Registro", layout="wide")
 st.title("🚚 Registro de Camiones - Sanchez Transportes")
 
@@ -73,17 +82,10 @@ archivo = st.file_uploader("Subir PDF (MIC o CRT)", type="pdf")
 if archivo:
     with st.spinner('Analizando documento...'):
         datos_fila = extraer_datos(archivo)
-        columnas = [
-            "ORIGEN", "ADUANA", "DESTINO", "ADUANA DE SALIDA", 
-            "EXPORTADOR", "IMPORTADOR", "fecha", "MIC ELEC.", 
-            "CRT", "FACTURA", "VALOR", "FLETE", 
-            "TRACTOR", "CARRETA", "CHOFER", "DNI", "SEGURO"
-        ]
+        columnas = ["ORIGEN", "ADUANA", "DESTINO", "ADUANA DE SALIDA", "EXPORTADOR", "IMPORTADOR", "fecha", "MIC ELEC.", "CRT", "FACTURA", "VALOR", "FLETE", "TRACTOR", "CARRETA", "CHOFER", "DNI", "SEGURO"]
         
         st.write("### Vista previa de los datos extraídos:")
-        # Creamos el DataFrame para mostrarlo en una tabla limpia
-        df = pd.DataFrame([datos_fila], columns=columnas)
-        st.table(df)
+        st.table(pd.DataFrame([datos_fila], columns=columnas))
         
         if st.button("Guardar en mi Excel de Drive"):
             if agregar_a_google_sheets(datos_fila):
