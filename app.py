@@ -86,32 +86,35 @@ def extraer_datos_profesional(pdf_file):
         imp_texto = re.split(r'(?:\s+AV\.|\s+RST|\s+RUA|\s+C\.)', imp_texto, flags=re.IGNORECASE)[0]
         d["IMPORTADOR"] = imp_texto.strip()
 
-    # --- CAMPOS CON CORRECCIÓN QUIRÚRGICA ---
-
-    # 1. EXPORTADOR: Usamos re.sub como "goma de borrar" para eliminar la basura sin afectar el nombre
     exp_match = re.search(r'(?:1\s*Nombre.*?remitente|33\s*Remitente)[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
     if exp_match: 
         exp_texto = exp_match.group(1).strip()
-        # Borra específicamente la cadena de error del OCR
         exp_texto = re.sub(r'038\s*N\s*A.*?NOVO HAMBURGO-', '', exp_texto, flags=re.IGNORECASE).strip()
-        # Corta si empieza una dirección
         exp_texto = re.split(r'(?:\s+AV\.|\s+RST|\s+RUA|\s+C\.)', exp_texto, flags=re.IGNORECASE)[0]
         d["EXPORTADOR"] = exp_texto.strip()
 
-    # 2. FLETE Y SEGURO: Soporte para montos que empiezan con punto (ej. ".00")
-    # Flete
-    flete_match = re.search(r'Flete\s*/\s*Frete[^\d\.]*(\d*\.\d{2})', texto, re.IGNORECASE)
-    if flete_match: 
-        val = flete_match.group(1)
-        d["FLETE"] = "0.00" if val == ".00" else val
+    # --- CAMPOS MODIFICADOS (Flete y Seguro a prueba de columnas) ---
+    
+    # Unimos el texto en una sola línea continua para evitar que los saltos rompan la tabla
+    texto_lineal = texto.replace('\n', ' ')
+
+    # FLETE: Toma todo entre "Flete/Frete" y la palabra "Seguro" u "Otros"
+    flete_zona = re.search(r'Flete\s*/\s*Frete(.*?)(?:Seguro\s*/|Otros\s*/|TOTAL)', texto_lineal, re.IGNORECASE)
+    if flete_zona:
+        # Extrae TODOS los montos con decimales (ej: ['.00', '3200.00'])
+        montos = re.findall(r'(\d*\.\d{2})', flete_zona.group(1))
+        # Convierte a números y selecciona el más alto
+        valores = [float(m) for m in montos]
+        d["FLETE"] = f"{max(valores):.2f}" if valores else "0.00"
     else:
         d["FLETE"] = "0.00"
-    
-    # Seguro
-    seguro_match = re.search(r'Seguro\s*/\s*Seguro[^\d\.]*(\d*\.\d{2})', texto, re.IGNORECASE)
-    if seguro_match: 
-        val = seguro_match.group(1)
-        d["SEGURO"] = "0.00" if val == ".00" else val
+
+    # SEGURO: Toma todo entre "Seguro/Seguro" y "Otros" o "TOTAL"
+    seguro_zona = re.search(r'Seguro\s*/\s*Seguro(.*?)(?:Otros\s*/|TOTAL)', texto_lineal, re.IGNORECASE)
+    if seguro_zona:
+        montos = re.findall(r'(\d*\.\d{2})', seguro_zona.group(1))
+        valores = [float(m) for m in montos]
+        d["SEGURO"] = f"{max(valores):.2f}" if valores else "0.00"
     else:
         d["SEGURO"] = "0.00"
 
