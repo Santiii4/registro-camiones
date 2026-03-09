@@ -44,42 +44,45 @@ def extraer_datos_profesional(pdf_file):
     d["ADUANA_SALIDA"] = "MENDOZA"
     
     mic = re.search(r'26AR[A-Z0-9]+', texto)
-    if mic: d["MIC"] = mic.group()
+    if mic: d["MIC"] = mic.group().upper()
     
     crt = re.search(r'038AR[\d\.]+', texto)
-    if crt: d["CRT"] = crt.group().replace("038", "", 1)
+    if crt: d["CRT"] = crt.group().replace("038", "", 1).upper()
     
     chofer = re.search(r'CONDUCTOR\s*1?:\s*([^:]+)\s*DOC:', texto, re.IGNORECASE)
-    if chofer: d["CHOFER"] = chofer.group(1).strip()
+    if chofer: d["CHOFER"] = chofer.group(1).strip().upper()
     
     dni = re.search(r'DOC:\s*([A-Z0-9\s.]+)', texto)
-    if dni: d["DNI"] = dni.group(1).strip()
+    if dni: d["DNI"] = dni.group(1).strip().upper()
 
     patentes = re.findall(r'[A-Z]{3}\d[A-Z\d]\d{2}|[A-Z]{3}\d{4}', texto)
-    if len(patentes) >= 1: d["TRACTOR"] = patentes[0]
+    if len(patentes) >= 1: d["TRACTOR"] = patentes[0].upper()
     
     fac_match = re.search(r'FACTURA\s*NRO\s*:\s*([\w-]+)', texto, re.IGNORECASE)
-    if fac_match: d["FACTURA"] = fac_match.group(1)
+    if fac_match: d["FACTURA"] = fac_match.group(1).upper()
 
     valor_match = re.search(r'(?:14|27)\s*Valor.*?\n\s*([\d.]+)', texto, re.IGNORECASE)
     if valor_match: d["VALOR"] = valor_match.group(1)
 
     semi_match = re.search(r'Semiremolque.*?Placa:\s*([A-Z0-9]{6,7})', texto, re.DOTALL | re.IGNORECASE)
     if semi_match:
-        d["SEMIREMOLQUE"] = semi_match.group(1)
+        d["SEMIREMOLQUE"] = semi_match.group(1).upper()
     elif len(patentes) >= 2:
-        d["SEMIREMOLQUE"] = patentes[1]
+        d["SEMIREMOLQUE"] = patentes[1].upper()
 
     fecha_match = re.search(r'7\s*Lugar.*?fecha.*?\d{2}-\d{2}-\d{4}', texto, re.DOTALL | re.IGNORECASE)
     if fecha_match:
         solo_fecha = re.search(r'(\d{2}-\d{2}-\d{4})', fecha_match.group(0))
         if solo_fecha: d["FECHA"] = solo_fecha.group(1)
 
+    # --- CAMPOS CON FILTRO ESTRICTO DE MAYÚSCULAS ---
+
+    # DESTINO
     destino_match = re.search(r'8\s*Ciudad.*?destino\s*final[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
     if destino_match: 
         destino_limpio = re.split(r'\s{2,}', destino_match.group(1).strip())[0]
-        destino_limpio = re.sub(r'\d+', '', destino_limpio)
-        destino_limpio = re.sub(r'[^a-zA-Z\s\-]', '', destino_limpio)
+        # Deja solo letras MAYÚSCULAS, la Ñ, espacios y guiones
+        destino_limpio = re.sub(r'[^A-ZÑ\s\-]', '', destino_limpio)
         d["DESTINO"] = re.sub(r'\s{2,}', ' ', destino_limpio).strip()
 
     # IMPORTADOR
@@ -88,27 +91,20 @@ def extraer_datos_profesional(pdf_file):
         imp_texto = imp_match.group(1).strip()
         imp_texto = re.split(r'\s{2,}', imp_texto)[0]
         imp_texto = re.split(r'(?:\s+AV\.|\s+RST|\s+RUA|\s+C\.)', imp_texto, flags=re.IGNORECASE)[0]
-        imp_texto = re.sub(r'\d+', '', imp_texto)
-        imp_texto = re.sub(r'[^a-zA-Z\s\.\-&]', '', imp_texto)
+        # Deja solo letras MAYÚSCULAS, la Ñ, puntos, guiones y espacios
+        imp_texto = re.sub(r'[^A-ZÑ\s\.\-&]', '', imp_texto)
         d["IMPORTADOR"] = re.sub(r'\s{2,}', ' ', imp_texto).strip()
 
-    # --- EXPORTADOR (Simplificado a la primera línea) ---
-    # Busca la etiqueta, salta a la siguiente línea y captura SOLO esa línea
+    # EXPORTADOR
     exp_match = re.search(r'(?:1\s*Nombre.*?remitente|33\s*Remitente)[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
     if exp_match: 
         exp_texto = exp_match.group(1).strip()
-        
-        # 1. Corta si hay un salto visual grande (separa la columna izquierda de la derecha)
         exp_texto = re.split(r'\s{2,}', exp_texto)[0]
-        
-        # 2. Tijeras de seguridad para fragmentos del OCR
         exp_texto = re.split(r'N\s*A\s*d\s*R', exp_texto, flags=re.IGNORECASE)[0]
         exp_texto = re.split(r'N[\?º°]?\s*de\s*conhec', exp_texto, flags=re.IGNORECASE)[0]
         
-        # 3. Limpieza de números y caracteres especiales
-        exp_texto = re.sub(r'\d+', '', exp_texto)
-        exp_texto = re.sub(r'[^a-zA-Z\s\.\-&]', '', exp_texto)
-        
+        # Filtro estricto: Deja solo letras MAYÚSCULAS, la Ñ, puntos, guiones y espacios
+        exp_texto = re.sub(r'[^A-ZÑ\s\.\-&]', '', exp_texto)
         d["EXPORTADOR"] = re.sub(r'\s{2,}', ' ', exp_texto).strip()
 
     # --- FLETE Y SEGURO (Intactos) ---
