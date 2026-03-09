@@ -8,8 +8,8 @@ from googleapiclient.discovery import build
 
 # CONFIGURACIÓN IA
 genai.configure(api_key=st.secrets["gemini_api_key"])
-# Cambia temporalmente a esta versión para ver si tienes cupo
-model_ia = genai.GenerativeModel('gemini-1.5-flash')
+# Cambia la línea de model_ia por esta:
+model_ia = genai.GenerativeModel('models/gemini-1.5-flash-latest')
 
 # CONFIGURACIÓN GOOGLE SHEETS
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
@@ -100,4 +100,5 @@ if archivo:
                 if agregar_a_google_sheets(fila):
                     st.success("✅ ¡Registro exitoso en la planilla!")
         except Exception as e:
+
             st.error(f"Error procesando el PDF con IA: {e}")
