@@ -6,10 +6,12 @@ import json
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-# CONFIGURACIÓN IA
+# --- CONFIGURACIÓN IA ACTUALIZADA ---
+# Forzamos el uso de la API estable
 genai.configure(api_key=st.secrets["gemini_api_key"])
-# Cambia la línea de model_ia por esta:
-model_ia = genai.GenerativeModel('models/gemini-1.5-flash-latest')
+
+# Usamos el nombre base sin prefijos raros, la librería se encarga del resto
+model_ia = genai.GenerativeModel('gemini-1.5-flash')
 
 # CONFIGURACIÓN GOOGLE SHEETS
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
@@ -102,3 +104,4 @@ if archivo:
         except Exception as e:
 
             st.error(f"Error procesando el PDF con IA: {e}")
+
