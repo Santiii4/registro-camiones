@@ -81,7 +81,6 @@ def extraer_datos_profesional(pdf_file):
     destino_match = re.search(r'8\s*Ciudad.*?destino\s*final[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
     if destino_match: 
         destino_limpio = re.split(r'\s{2,}', destino_match.group(1).strip())[0]
-        # Deja solo letras MAYÚSCULAS, la Ñ, espacios y guiones
         destino_limpio = re.sub(r'[^A-ZÑ\s\-]', '', destino_limpio)
         d["DESTINO"] = re.sub(r'\s{2,}', ' ', destino_limpio).strip()
 
@@ -91,12 +90,11 @@ def extraer_datos_profesional(pdf_file):
         imp_texto = imp_match.group(1).strip()
         imp_texto = re.split(r'\s{2,}', imp_texto)[0]
         imp_texto = re.split(r'(?:\s+AV\.|\s+RST|\s+RUA|\s+C\.)', imp_texto, flags=re.IGNORECASE)[0]
-        # Deja solo letras MAYÚSCULAS, la Ñ, puntos, guiones y espacios
         imp_texto = re.sub(r'[^A-ZÑ\s\.\-&]', '', imp_texto)
         d["IMPORTADOR"] = re.sub(r'\s{2,}', ' ', imp_texto).strip()
 
-    # EXPORTADOR
-    exp_match = re.search(r'(?:1\s*Nombre.*?remitente|33\s*Remitente)[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
+    # --- EXPORTADOR (Extraído estrictamente del Campo 1 del CRT) ---
+    exp_match = re.search(r'1\s*Nombre.*?remitente[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
     if exp_match: 
         exp_texto = exp_match.group(1).strip()
         exp_texto = re.split(r'\s{2,}', exp_texto)[0]
