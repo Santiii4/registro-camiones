@@ -8,8 +8,8 @@ from googleapiclient.discovery import build
 
 # CONFIGURACIÓN IA
 genai.configure(api_key=st.secrets["gemini_api_key"])
-# Cambia 'gemini-1.5-flash' por 'gemini-2.0-flash'
-model_ia = genai.GenerativeModel('gemini-2.0-flash')
+# Cambia temporalmente a esta versión para ver si tienes cupo
+model_ia = genai.GenerativeModel('gemini-1.5-flash')
 
 # CONFIGURACIÓN GOOGLE SHEETS
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
