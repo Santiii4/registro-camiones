@@ -39,7 +39,7 @@ def extraer_datos_profesional(pdf_file):
     if not texto.strip():
         return list(d.values())
 
-    # --- CAMPOS INTACTOS (No modificados) ---
+    # --- CAMPOS INTACTOS ---
     d["ORIGEN"] = "ARGENTINA" if "ARGENTINA" in texto.upper() else "BRASIL"
     d["ADUANA_SALIDA"] = "MENDOZA"
     
@@ -75,45 +75,50 @@ def extraer_datos_profesional(pdf_file):
         solo_fecha = re.search(r'(\d{2}-\d{2}-\d{4})', fecha_match.group(0))
         if solo_fecha: d["FECHA"] = solo_fecha.group(1)
 
+    # --- CAMPOS CON FILTRO "SOLO LETRAS" ---
+
+    # DESTINO
     destino_match = re.search(r'8\s*Ciudad.*?destino\s*final[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
     if destino_match: 
         destino_limpio = re.split(r'\s{2,}', destino_match.group(1).strip())[0]
-        d["DESTINO"] = destino_limpio
+        destino_limpio = re.sub(r'\d+', '', destino_limpio) # Elimina cualquier número
+        destino_limpio = re.sub(r'[^a-zA-Z\s\-]', '', destino_limpio) # Deja solo letras y guiones
+        d["DESTINO"] = re.sub(r'\s{2,}', ' ', destino_limpio).strip()
 
+    # IMPORTADOR
     imp_match = re.search(r'(?:4\s*Nombre.*?destinatario|34\s*Destinatario)[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
     if imp_match: 
         imp_texto = imp_match.group(1).strip()
         imp_texto = re.split(r'(?:\s+AV\.|\s+RST|\s+RUA|\s+C\.)', imp_texto, flags=re.IGNORECASE)[0]
-        d["IMPORTADOR"] = imp_texto.strip()
+        imp_texto = re.sub(r'\d+', '', imp_texto) # Elimina cualquier número
+        imp_texto = re.sub(r'[^a-zA-Z\s\.\-]', '', imp_texto) # Deja letras, puntos y espacios
+        d["IMPORTADOR"] = re.sub(r'\s{2,}', ' ', imp_texto).strip()
 
+    # EXPORTADOR
     exp_match = re.search(r'(?:1\s*Nombre.*?remitente|33\s*Remitente)[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
     if exp_match: 
         exp_texto = exp_match.group(1).strip()
         exp_texto = re.sub(r'038\s*N\s*A.*?NOVO HAMBURGO-', '', exp_texto, flags=re.IGNORECASE).strip()
         exp_texto = re.split(r'(?:\s+AV\.|\s+RST|\s+RUA|\s+C\.)', exp_texto, flags=re.IGNORECASE)[0]
-        d["EXPORTADOR"] = exp_texto.strip()
+        exp_texto = re.sub(r'\d+', '', exp_texto) # Elimina cualquier número que se haya colado
+        exp_texto = re.sub(r'[^a-zA-Z\s\.\-]', '', exp_texto) # Deja letras, puntos y espacios
+        d["EXPORTADOR"] = re.sub(r'\s{2,}', ' ', exp_texto).strip()
 
-    # --- CAMPOS MODIFICADOS (Flete y Seguro a prueba de columnas) ---
-    
-    # Unimos el texto en una sola línea continua para evitar que los saltos rompan la tabla
+    # --- FLETE Y SEGURO (Intactos) ---
     texto_lineal = texto.replace('\n', ' ')
 
-    # FLETE: Toma todo entre "Flete/Frete" y la palabra "Seguro" u "Otros"
     flete_zona = re.search(r'Flete\s*/\s*Frete(.*?)(?:Seguro\s*/|Otros\s*/|TOTAL)', texto_lineal, re.IGNORECASE)
     if flete_zona:
-        # Extrae TODOS los montos con decimales (ej: ['.00', '3200.00'])
         montos = re.findall(r'(\d*\.\d{2})', flete_zona.group(1))
-        # Convierte a números y selecciona el más alto
-        valores = [float(m) for m in montos]
+        valores = [float(m) for m in montos if m != '.00']
         d["FLETE"] = f"{max(valores):.2f}" if valores else "0.00"
     else:
         d["FLETE"] = "0.00"
 
-    # SEGURO: Toma todo entre "Seguro/Seguro" y "Otros" o "TOTAL"
     seguro_zona = re.search(r'Seguro\s*/\s*Seguro(.*?)(?:Otros\s*/|TOTAL)', texto_lineal, re.IGNORECASE)
     if seguro_zona:
         montos = re.findall(r'(\d*\.\d{2})', seguro_zona.group(1))
-        valores = [float(m) for m in montos]
+        valores = [float(m) for m in montos if m != '.00']
         d["SEGURO"] = f"{max(valores):.2f}" if valores else "0.00"
     else:
         d["SEGURO"] = "0.00"
@@ -129,7 +134,7 @@ st.title("🚚 Registro de Camiones - Sánchez Transportes")
 archivo = st.file_uploader("Subir MIC/CRT (PDF)", type="pdf")
 
 if archivo:
-    with st.spinner('Procesando documento...'):
+    with st.spinner('Procesando documento con filtros...'):
         fila = extraer_datos_profesional(archivo)
         columnas = ["ORIGEN", "DESTINO", "ADUANA SALIDA", "EXPORTADOR", "IMPORTADOR", "FECHA", "MIC", "CRT", "FACTURA", "VALOR", "FLETE", "TRACTOR", "SEMIREMOLQUE", "CHOFER", "DNI", "SEGURO"]
         
