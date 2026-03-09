@@ -6,11 +6,8 @@ import json
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-# --- CONFIGURACIÓN IA ---
-# Es vital que 'gemini_api_key' esté en Settings > Secrets de Streamlit
+# CONFIGURACIÓN IA ESTABLE
 genai.configure(api_key=st.secrets["gemini_api_key"])
-
-# Modelo estable para 2026
 model_ia = genai.GenerativeModel('gemini-1.5-flash')
 
 # CONFIGURACIÓN GOOGLE SHEETS
@@ -24,8 +21,6 @@ def agregar_a_google_sheets(datos_lista):
         service = build('sheets', 'v4', credentials=creds)
         sheet = service.spreadsheets()
         body = {'values': [datos_lista]}
-        
-        # Agrega la fila al final de la Hoja 1
         sheet.values().append(
             spreadsheetId=SPREADSHEET_ID,
             range="Hoja 1!A1",
@@ -34,83 +29,37 @@ def agregar_a_google_sheets(datos_lista):
         ).execute()
         return True
     except Exception as e:
-        st.error(f"Error al guardar en Google Sheets: {e}")
+        st.error(f"Error de conexión con Sheets: {e}")
         return False
 
 def extraer_con_ia(texto_pdf):
-    # Forzamos respuesta JSON para evitar errores de formato
-    generation_config = {
-        "temperature": 0.1,
-        "response_mime_type": "application/json",
-    }
+    # Forzamos JSON para evitar errores de lectura
+    prompt = f"Analiza este MIC/CRT y devuelve JSON con campos: ORIGEN, ADUANA, DESTINO, ADUANA_SALIDA(MENDOZA), EXPORTADOR, IMPORTADOR, FECHA, MIC_ELEC(26AR...), CRT(sin 038), FACTURA(campo 11), VALOR(27), FLETE(28), TRACTOR(11), CARRETA, CHOFER, DNI(40), SEGURO(29). Texto: {texto_pdf}"
     
-    prompt = f"""
-    Actúa como un experto en logística de transporte para Sánchez Transportes. 
-    Analiza este texto de un MIC/DTA o CRT y devuelve un JSON con estos campos exactos:
-    - ORIGEN: 'ARGENTINA', 'BRASIL' o 'PARAGUAY' (según aduana de partida campo 7).
-    - ADUANA: Nombre aduana campo 7.
-    - DESTINO: Ciudad y país campo 8.
-    - ADUANA_SALIDA: 'MENDOZA'.
-    - EXPORTADOR: Nombre remitente campo 33.
-    - IMPORTADOR: Nombre destinatario campo 34.
-    - FECHA: Fecha oficial.
-    - MIC_ELEC: Número que inicia con 26AR.
-    - CRT: Número campo 23 (SIN el 038 inicial).
-    - FACTURA: Número de factura campo 11 (tras 'exportacion nro').
-    - VALOR: Campo 27.
-    - FLETE: Campo 28.
-    - TRACTOR: Placa camión campo 11.
-    - CARRETA: Placa semiremolque.
-    - CHOFER: Nombre conductor.
-    - DNI: Campo 40 (tras CI o DNI).
-    - SEGURO: Campo 29.
-
-    Texto del PDF:
-    {texto_pdf}
-    """
-    
-    response = model_ia.generate_content(prompt, generation_config=generation_config)
+    response = model_ia.generate_content(
+        prompt, 
+        generation_config={"response_mime_type": "application/json"}
+    )
     return json.loads(response.text)
 
 def extraer_datos_ia(pdf_file):
     with pdfplumber.open(pdf_file) as pdf:
-        texto = ""
-        for page in pdf.pages:
-            texto += (page.extract_text() or "") + "\n"
+        texto = "\n".join([page.extract_text() or "" for page in pdf.pages])
     
-    if not texto.strip():
-        raise ValueError("No se pudo extraer texto del PDF. ¿Es una imagen?")
-        
-    res_json = extraer_con_ia(texto)
-    
-    # Mapeo ordenado para las columnas del Excel
-    orden = [
-        res_json.get("ORIGEN"), res_json.get("ADUANA"), res_json.get("DESTINO"), 
-        res_json.get("ADUANA_SALIDA"), res_json.get("EXPORTADOR"), res_json.get("IMPORTADOR"), 
-        res_json.get("FECHA"), res_json.get("MIC_ELEC"), res_json.get("CRT"), 
-        res_json.get("FACTURA"), res_json.get("VALOR"), res_json.get("FLETE"), 
-        res_json.get("TRACTOR"), res_json.get("CARRETA"), res_json.get("CHOFER"), 
-        res_json.get("DNI"), res_json.get("SEGURO")
-    ]
-    return orden
+    res = extraer_con_ia(texto)
+    return [res.get(k) for k in ["ORIGEN", "ADUANA", "DESTINO", "ADUANA_SALIDA", "EXPORTADOR", "IMPORTADOR", "FECHA", "MIC_ELEC", "CRT", "FACTURA", "VALOR", "FLETE", "TRACTOR", "CARRETA", "CHOFER", "DNI", "SEGURO"]]
 
-# INTERFAZ DE USUARIO
+# INTERFAZ
 st.set_page_config(page_title="Sanchez Transportes IA", layout="wide")
 st.title("🚚 Registro Inteligente - Sanchez Transportes")
-
 archivo = st.file_uploader("Subir MIC/CRT (PDF)", type="pdf")
 
 if archivo:
-    with st.spinner('Analizando con Inteligencia Artificial...'):
+    with st.spinner('Analizando...'):
         try:
             fila = extraer_datos_ia(archivo)
-            columnas = ["ORIGEN", "ADUANA", "DESTINO", "ADUANA DE SALIDA", "EXPORTADOR", "IMPORTADOR", "FECHA", "MIC ELEC.", "CRT", "FACTURA", "VALOR", "FLETE", "TRACTOR", "CARRETA", "CHOFER", "DNI", "SEGURO"]
-            
-            st.write("### Vista previa de datos detectados:")
-            st.table(pd.DataFrame([fila], columns=columnas))
-            
-            if st.button("Confirmar y Guardar en Google Sheets"):
-                if agregar_a_google_sheets(fila):
-                    st.success("✅ ¡Datos guardados exitosamente!")
+            st.table(pd.DataFrame([fila], columns=["ORIGEN", "ADUANA", "DESTINO", "ADUANA SALIDA", "EXPORTADOR", "IMPORTADOR", "FECHA", "MIC", "CRT", "FACTURA", "VALOR", "FLETE", "TRACTOR", "CARRETA", "CHOFER", "DNI", "SEGURO"]))
+            if st.button("Guardar en Drive"):
+                if agregar_a_google_sheets(fila): st.success("¡Guardado!")
         except Exception as e:
-            st.error(f"Error técnico: {e}")
+            st.error(f"Error: {e}")
