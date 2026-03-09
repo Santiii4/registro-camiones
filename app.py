@@ -82,33 +82,40 @@ def extraer_datos_profesional(pdf_file):
         destino_limpio = re.sub(r'[^a-zA-Z\s\-]', '', destino_limpio)
         d["DESTINO"] = re.sub(r'\s{2,}', ' ', destino_limpio).strip()
 
-    # IMPORTADOR
+    # --- IMPORTADOR CON TERMINADOR SOCIETARIO ---
     imp_match = re.search(r'(?:4\s*Nombre.*?destinatario|34\s*Destinatario)[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
     if imp_match: 
         imp_texto = imp_match.group(1).strip()
-        imp_texto = re.split(r'\s{2,}', imp_texto)[0]
-        imp_texto = re.split(r'(?:\s+AV\.|\s+RST|\s+RUA|\s+C\.)', imp_texto, flags=re.IGNORECASE)[0]
+        
+        # Corta en LTDA, S.A., S.R.L., etc.
+        sociedad_match = re.search(r'^(.*?(?:S\.?\s*R\.?\s*L\.?|S\.?\s*A\.?|L\.?\s*T\.?\s*D\.?\s*A\.?|S/A|S\.?\s*A\.?\s*S\.?|INC\.?))', imp_texto, re.IGNORECASE)
+        if sociedad_match:
+            imp_texto = sociedad_match.group(1)
+        else:
+            imp_texto = re.split(r'\s{2,}', imp_texto)[0]
+            imp_texto = re.split(r'(?:\s+AV\.|\s+RST|\s+RUA|\s+C\.)', imp_texto, flags=re.IGNORECASE)[0]
+            
         imp_texto = re.sub(r'\d+', '', imp_texto)
-        imp_texto = re.sub(r'[^a-zA-Z\s\.\-]', '', imp_texto)
+        imp_texto = re.sub(r'[^a-zA-Z\s\.\-&]', '', imp_texto)
         d["IMPORTADOR"] = re.sub(r'\s{2,}', ' ', imp_texto).strip()
 
-    # --- EXPORTADOR MODIFICADO ---
+    # --- EXPORTADOR CON TERMINADOR SOCIETARIO ---
     exp_match = re.search(r'(?:1\s*Nombre.*?remitente|33\s*Remitente)[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
     if exp_match: 
         exp_texto = exp_match.group(1).strip()
         
-        # 1. Eliminación exacta de la frase reportada
-        exp_texto = exp_texto.replace('N A d R e c on h eci . m ie nt o . -', '')
+        # La magia: Captura todo hasta el tipo societario y descarta la basura de la derecha
+        sociedad_match = re.search(r'^(.*?(?:S\.?\s*R\.?\s*L\.?|S\.?\s*A\.?|L\.?\s*T\.?\s*D\.?\s*A\.?|S/A|S\.?\s*A\.?\s*S\.?|INC\.?))', exp_texto, re.IGNORECASE)
+        if sociedad_match:
+            exp_texto = sociedad_match.group(1)
+        else:
+            # Respaldo por si es una empresa sin tipo societario claro
+            exp_texto = re.split(r'\s{2,}', exp_texto)[0]
+            exp_texto = re.split(r'(?:\s+AV\.|\s+RST|\s+RUA|\s+C\.)', exp_texto, flags=re.IGNORECASE)[0]
         
-        # 2. Cortes por si hay variaciones de espaciado
-        exp_texto = re.split(r'\s{2,}', exp_texto)[0]
-        exp_texto = re.split(r'N[\?º°]?\s*de\s*conhec', exp_texto, flags=re.IGNORECASE)[0]
-        exp_texto = re.split(r'N\s*A\s*d\s*R', exp_texto, flags=re.IGNORECASE)[0] # Guillotina más fuerte
-        
-        exp_texto = re.sub(r'038\s*N\s*A.*?NOVO HAMBURGO-', '', exp_texto, flags=re.IGNORECASE).strip()
-        exp_texto = re.split(r'(?:\s+AV\.|\s+RST|\s+RUA|\s+C\.)', exp_texto, flags=re.IGNORECASE)[0]
+        # Limpieza final
         exp_texto = re.sub(r'\d+', '', exp_texto)
-        exp_texto = re.sub(r'[^a-zA-Z\s\.\-]', '', exp_texto)
+        exp_texto = re.sub(r'[^a-zA-Z\s\.\-&]', '', exp_texto)
         d["EXPORTADOR"] = re.sub(r'\s{2,}', ' ', exp_texto).strip()
 
     # --- FLETE Y SEGURO (Intactos) ---
