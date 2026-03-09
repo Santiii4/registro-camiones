@@ -118,8 +118,3 @@ if archivo:
             if agregar_a_google_sheets(fila):
                 st.success("✅ ¡Registro exitoso!")
         st.table(pd.DataFrame([fila], columns=columnas))
-        
-        if st.button("Guardar en Google Sheets"):
-            if agregar_a_google_sheets(fila):
-                st.success("✅ ¡Registro guardado exitosamente!")
-
