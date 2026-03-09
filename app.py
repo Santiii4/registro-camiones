@@ -6,11 +6,12 @@ import json
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-# --- CONFIGURACIÓN IA ACTUALIZADA ---
-# Forzamos el uso de la API estable
+# --- CONFIGURACIÓN IA ACTUALIZADA Y ESTABLE ---
+# Asegúrate de que esta configuración esté ANTES de definir model_ia
 genai.configure(api_key=st.secrets["gemini_api_key"])
 
-# Usamos el nombre base sin prefijos raros, la librería se encarga del resto
+# Usamos el nombre base estandarizado para 2026
+# Este nombre es el que acepta la versión estable de la API
 model_ia = genai.GenerativeModel('gemini-1.5-flash')
 
 # CONFIGURACIÓN GOOGLE SHEETS
@@ -104,4 +105,5 @@ if archivo:
         except Exception as e:
 
             st.error(f"Error procesando el PDF con IA: {e}")
+
 
