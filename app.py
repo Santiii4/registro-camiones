@@ -6,12 +6,11 @@ import json
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-# --- CONFIGURACIÓN IA ACTUALIZADA Y ESTABLE ---
-# Asegúrate de que esta configuración esté ANTES de definir model_ia
+# --- CONFIGURACIÓN IA (CORREGIDA) ---
+# Forzamos la configuración para evitar el error 404 de v1beta
 genai.configure(api_key=st.secrets["gemini_api_key"])
 
-# Usamos el nombre base estandarizado para 2026
-# Este nombre es el que acepta la versión estable de la API
+# Usamos el nombre del modelo estable sin prefijos de versión
 model_ia = genai.GenerativeModel('gemini-1.5-flash')
 
 # CONFIGURACIÓN GOOGLE SHEETS
@@ -37,6 +36,14 @@ def agregar_a_google_sheets(datos_lista):
         return False
 
 def extraer_con_ia(texto_pdf):
+    # Definimos los parámetros de generación para mayor estabilidad
+    generation_config = {
+        "temperature": 0.1,
+        "top_p": 0.95,
+        "top_k": 0,
+        "response_mime_type": "application/json",
+    }
+    
     prompt = f"""
     Actúa como un experto en logística de transporte. Analiza el texto de este MIC/DTA o CRT y devuelve un JSON puro con estos campos:
     - ORIGEN: Solo 'ARGENTINA', 'BRASIL' o 'PARAGUAY' (basado en el país de la aduana de partida campo 7).
@@ -53,16 +60,15 @@ def extraer_con_ia(texto_pdf):
     - FLETE: Flete campo 28.
     - TRACTOR: Placa de camión campo 11.
     - CARRETA: Placa de semiremolque/reboque.
-    - CHOFER: Nombre del conductor.
+    - CHOFER: Nombre completo del conductor.
     - DNI: Documento en el campo 40 (luego de CI o DNI).
     - SEGURO: Valor del seguro campo 29.
 
     Texto: {texto_pdf}
-    Responde UNICAMENTE el JSON.
     """
-    response = model_ia.generate_content(prompt)
-    limpio = response.text.replace('```json', '').replace('```', '').strip()
-    return json.loads(limpio)
+    
+    response = model_ia.generate_content(prompt, generation_config=generation_config)
+    return json.loads(response.text)
 
 def extraer_datos_ia(pdf_file):
     with pdfplumber.open(pdf_file) as pdf:
@@ -70,10 +76,8 @@ def extraer_datos_ia(pdf_file):
         for page in pdf.pages:
             texto += page.extract_text() + "\n"
     
-    # Procesar con Inteligencia Artificial
     res_json = extraer_con_ia(texto)
     
-    # Ordenamos la lista según tu planilla de 17 columnas
     orden = [
         res_json.get("ORIGEN"), res_json.get("ADUANA"), res_json.get("DESTINO"), 
         res_json.get("ADUANA_SALIDA"), res_json.get("EXPORTADOR"), res_json.get("IMPORTADOR"), 
@@ -103,7 +107,4 @@ if archivo:
                 if agregar_a_google_sheets(fila):
                     st.success("✅ ¡Registro exitoso en la planilla!")
         except Exception as e:
-
             st.error(f"Error procesando el PDF con IA: {e}")
-
-
