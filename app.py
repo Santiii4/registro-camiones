@@ -75,33 +75,36 @@ def extraer_datos_profesional(pdf_file):
         solo_fecha = re.search(r'(\d{2}-\d{2}-\d{4})', fecha_match.group(0))
         if solo_fecha: d["FECHA"] = solo_fecha.group(1)
 
-    # --- CAMPOS CON FILTRO "SOLO LETRAS" ---
-
-    # DESTINO
     destino_match = re.search(r'8\s*Ciudad.*?destino\s*final[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
     if destino_match: 
         destino_limpio = re.split(r'\s{2,}', destino_match.group(1).strip())[0]
-        destino_limpio = re.sub(r'\d+', '', destino_limpio) # Elimina cualquier número
-        destino_limpio = re.sub(r'[^a-zA-Z\s\-]', '', destino_limpio) # Deja solo letras y guiones
+        destino_limpio = re.sub(r'\d+', '', destino_limpio)
+        destino_limpio = re.sub(r'[^a-zA-Z\s\-]', '', destino_limpio)
         d["DESTINO"] = re.sub(r'\s{2,}', ' ', destino_limpio).strip()
+
+    # --- CAMPOS CON CORRECCIÓN DE COLUMNAS ---
 
     # IMPORTADOR
     imp_match = re.search(r'(?:4\s*Nombre.*?destinatario|34\s*Destinatario)[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
     if imp_match: 
         imp_texto = imp_match.group(1).strip()
+        # NUEVO: Corta si encuentra la columna de al lado (separada por espacios múltiples)
+        imp_texto = re.split(r'\s{2,}', imp_texto)[0]
         imp_texto = re.split(r'(?:\s+AV\.|\s+RST|\s+RUA|\s+C\.)', imp_texto, flags=re.IGNORECASE)[0]
-        imp_texto = re.sub(r'\d+', '', imp_texto) # Elimina cualquier número
-        imp_texto = re.sub(r'[^a-zA-Z\s\.\-]', '', imp_texto) # Deja letras, puntos y espacios
+        imp_texto = re.sub(r'\d+', '', imp_texto)
+        imp_texto = re.sub(r'[^a-zA-Z\s\.\-]', '', imp_texto)
         d["IMPORTADOR"] = re.sub(r'\s{2,}', ' ', imp_texto).strip()
 
     # EXPORTADOR
     exp_match = re.search(r'(?:1\s*Nombre.*?remitente|33\s*Remitente)[^\n]*\n\s*([^\n]+)', texto, re.IGNORECASE)
     if exp_match: 
         exp_texto = exp_match.group(1).strip()
+        # NUEVO: Corta si encuentra la columna de al lado (Aduana de destino, etc.)
+        exp_texto = re.split(r'\s{2,}', exp_texto)[0]
         exp_texto = re.sub(r'038\s*N\s*A.*?NOVO HAMBURGO-', '', exp_texto, flags=re.IGNORECASE).strip()
         exp_texto = re.split(r'(?:\s+AV\.|\s+RST|\s+RUA|\s+C\.)', exp_texto, flags=re.IGNORECASE)[0]
-        exp_texto = re.sub(r'\d+', '', exp_texto) # Elimina cualquier número que se haya colado
-        exp_texto = re.sub(r'[^a-zA-Z\s\.\-]', '', exp_texto) # Deja letras, puntos y espacios
+        exp_texto = re.sub(r'\d+', '', exp_texto)
+        exp_texto = re.sub(r'[^a-zA-Z\s\.\-]', '', exp_texto)
         d["EXPORTADOR"] = re.sub(r'\s{2,}', ' ', exp_texto).strip()
 
     # --- FLETE Y SEGURO (Intactos) ---
@@ -134,7 +137,7 @@ st.title("🚚 Registro de Camiones - Sánchez Transportes")
 archivo = st.file_uploader("Subir MIC/CRT (PDF)", type="pdf")
 
 if archivo:
-    with st.spinner('Procesando documento con filtros...'):
+    with st.spinner('Procesando documento...'):
         fila = extraer_datos_profesional(archivo)
         columnas = ["ORIGEN", "DESTINO", "ADUANA SALIDA", "EXPORTADOR", "IMPORTADOR", "FECHA", "MIC", "CRT", "FACTURA", "VALOR", "FLETE", "TRACTOR", "SEMIREMOLQUE", "CHOFER", "DNI", "SEGURO"]
         
